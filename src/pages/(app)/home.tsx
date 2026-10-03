@@ -4,12 +4,13 @@
  * Drop a pin, pick a length and theme, "Build tour". That creates a `tours`
  * row and enqueues the build-tour job (src/jobs.ts), which writes `stops`
  * rows from the worker. Both collections are live queries here, so the status
- * chip and the map markers update as the job writes, with no polling.
+ * chip, the map markers and route line, and the stop list update as the job
+ * writes (stops first, narration later), with no polling.
  */
 
 import { useMemo, useState } from 'react'
 import { AuthOverlay, useAuthProfileReady, useJobs, useMutations, useQuery } from 'deepspace'
-import { MapPin as PinIcon } from 'lucide-react'
+import { ExternalLink, MapPin as PinIcon } from 'lucide-react'
 import {
   Badge,
   Button,
@@ -32,6 +33,7 @@ import {
   type TourTheme,
 } from '../../schemas/tours-schema'
 import type { StopData } from '../../schemas/stops-schema'
+import { routeLengthMeters } from '@/lib/geo'
 
 const STATUS_LABEL: Record<TourStatus, string> = {
   queued: 'Queued',
@@ -56,6 +58,12 @@ const STATUS_VARIANT: Record<TourStatus, 'secondary' | 'info' | 'success' | 'des
 const BUILDING: TourStatus[] = ['queued', 'finding', 'choosing', 'writing']
 
 const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+interface PanelStop extends MapStop {
+  narration?: string
+  transition?: string
+  sourceUrl: string
+}
 
 export default function HomePage() {
   const { isSignedIn, userId } = useAuthProfileReady({ requireUser: true })
@@ -82,10 +90,19 @@ export default function HomePage() {
   const { records: stopRecords } = useQuery<StopData>('stops', {
     where: { tourId: activeTour?.recordId ?? '' },
   })
-  const stops: MapStop[] = useMemo(
+  const stops: PanelStop[] = useMemo(
     () =>
       stopRecords
-        .map((r) => ({ id: r.recordId, name: r.data.name, lat: r.data.lat, lng: r.data.lng, order: r.data.order }))
+        .map((r) => ({
+          id: r.recordId,
+          name: r.data.name,
+          lat: r.data.lat,
+          lng: r.data.lng,
+          order: r.data.order,
+          narration: r.data.narration,
+          transition: r.data.transition,
+          sourceUrl: r.data.sourceUrl,
+        }))
         .sort((a, b) => a.order - b.order),
     [stopRecords],
   )
@@ -94,6 +111,7 @@ export default function HomePage() {
   const building = submitting || (status !== undefined && BUILDING.includes(status))
   // Show the tour's own pin while it is the active one.
   const shownPin: MapPin | null = pin ?? (activeTour ? { lat: activeTour.data.lat, lng: activeTour.data.lng } : null)
+  const routeKm = activeTour && stops.length > 0 ? routeLengthMeters(activeTour.data, stops) / 1000 : 0
 
   const pickPin = (next: MapPin) => {
     setPin(next)
@@ -125,7 +143,7 @@ export default function HomePage() {
       <TourMap pin={shownPin} stops={stops} locked={!isSignedIn || building} onPick={pickPin} />
 
       <div
-        className="absolute left-4 top-4 z-10 w-[min(20rem,calc(100%-2rem))] rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg"
+        className="absolute left-4 top-4 z-10 max-h-[calc(100%-2rem)] w-[min(24rem,calc(100%-2rem))] overflow-y-auto rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg"
         data-testid="tour-builder"
       >
         <h1 className="text-base font-semibold">Plan a walking tour</h1>
@@ -215,8 +233,47 @@ export default function HomePage() {
                 )}
                 {stops.length > 0 && (
                   <p className="text-xs text-muted-foreground" data-testid="stop-count">
-                    {stops.length} {stops.length === 1 ? 'stop' : 'stops'}
+                    {stops.length} {stops.length === 1 ? 'stop' : 'stops'} ·{' '}
+                    <span data-testid="route-length">≈ {routeKm.toFixed(1)} km walk</span> (straight-line, one way)
                   </p>
+                )}
+                {stops.length > 0 && (
+                  <ol className="mt-3 space-y-4 border-t border-border pt-3" data-testid="stop-list">
+                    {stops.map((stop) => (
+                      <li key={stop.id} className="text-sm" data-testid="stop-item">
+                        <div className="flex items-start gap-2">
+                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                            {stop.order + 1}
+                          </span>
+                          <span className="pt-0.5 font-medium">{stop.name}</span>
+                        </div>
+                        <div className="mt-1.5 space-y-1.5 pl-8">
+                          {stop.narration ? (
+                            <p className="leading-relaxed" data-testid="stop-narration">
+                              {stop.narration}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              {status === 'writing' ? 'Writing…' : 'No narration.'}
+                            </p>
+                          )}
+                          {stop.transition && (
+                            <p className="text-xs italic text-muted-foreground" data-testid="stop-transition">
+                              {stop.transition}
+                            </p>
+                          )}
+                          <a
+                            href={stop.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                          >
+                            Source <ExternalLink className="size-3" />
+                          </a>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
                 )}
               </div>
             )}

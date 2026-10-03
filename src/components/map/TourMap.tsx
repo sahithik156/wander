@@ -5,6 +5,10 @@
  *
  * The map is created once; props reach the imperative handlers through refs
  * so listeners are never re-bound (same approach as RunningMap's RouteMap).
+ *
+ * The route is a one-way straight line pin -> stops in order, ending at the
+ * last stop (no street routing; SPEC.md out of scope), drawn as a GeoJSON
+ * line layer.
  */
 
 import { useEffect, useRef } from 'react'
@@ -14,6 +18,8 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
 const DEFAULT_CENTER: [number, number] = [-0.1276, 51.5072]
 const DEFAULT_ZOOM = 12
+const ROUTE_SOURCE = 'route'
+const ROUTE_COLOR = '#e11d48'
 
 export interface MapPin {
   lat: number
@@ -36,6 +42,18 @@ interface TourMapProps {
   onPick: (pin: MapPin) => void
 }
 
+interface RouteFeature {
+  type: 'Feature'
+  properties: Record<string, never>
+  geometry: { type: 'LineString'; coordinates: [number, number][] }
+}
+
+function routeData(pin: MapPin | null, stops: MapStop[]): RouteFeature {
+  const points = stops.map((s): [number, number] => [s.lng, s.lat])
+  if (pin && points.length > 0) points.unshift([pin.lng, pin.lat])
+  return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: points.length > 1 ? points : [] } }
+}
+
 function stopElement(stop: MapStop): HTMLElement {
   const el = document.createElement('div')
   el.className =
@@ -53,6 +71,8 @@ export function TourMap({ pin, stops, locked = false, onPick }: TourMapProps) {
   const stopMarkersRef = useRef(new Map<string, maplibregl.Marker>())
   const cbRef = useRef({ onPick, locked })
   cbRef.current = { onPick, locked }
+  const routeRef = useRef(routeData(pin, stops))
+  routeRef.current = routeData(pin, stops)
 
   // Create the map once.
   useEffect(() => {
@@ -68,6 +88,18 @@ export function TourMap({ pin, stops, locked = false, onPick }: TourMapProps) {
     map.on('click', (e) => {
       if (cbRef.current.locked) return
       cbRef.current.onPick({ lat: e.lngLat.lat, lng: e.lngLat.lng })
+    })
+    // The route layer can only be added once the style has loaded; until then
+    // the latest route waits in routeRef.
+    map.on('load', () => {
+      map.addSource(ROUTE_SOURCE, { type: 'geojson', data: routeRef.current })
+      map.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: ROUTE_SOURCE,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': ROUTE_COLOR, 'line-width': 3, 'line-opacity': 0.75, 'line-dasharray': [2, 1.5] },
+      })
     })
     mapRef.current = map
 
@@ -108,6 +140,12 @@ export function TourMap({ pin, stops, locked = false, onPick }: TourMapProps) {
     pinMarkerRef.current.setDraggable(!locked)
   }, [pin, locked])
 
+  // Keep the route line in sync with the pin and the ordered stops.
+  useEffect(() => {
+    const source = mapRef.current?.getSource(ROUTE_SOURCE) as maplibregl.GeoJSONSource | undefined
+    source?.setData(routeData(pin, stops))
+  }, [pin, stops])
+
   // Add/remove stop markers as records arrive, and fit the view to them.
   useEffect(() => {
     const map = mapRef.current
@@ -133,7 +171,11 @@ export function TourMap({ pin, stops, locked = false, onPick }: TourMapProps) {
       const bounds = new maplibregl.LngLatBounds()
       if (pin) bounds.extend([pin.lng, pin.lat])
       for (const stop of stops) bounds.extend([stop.lng, stop.lat])
-      map.fitBounds(bounds, { padding: 100, maxZoom: 17, duration: 600 })
+      // The tour panel overlays the left of the map on wide screens; keep
+      // stops out from under it.
+      const width = map.getContainer().clientWidth
+      const left = width >= 768 ? 440 : 60
+      map.fitBounds(bounds, { padding: { top: 80, bottom: 80, right: 80, left }, maxZoom: 17, duration: 600 })
     }
     // `pin` only seeds the bounds; re-running on pin moves would refit the map.
   }, [stops])
