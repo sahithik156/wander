@@ -19,6 +19,7 @@ import { test, expect } from 'deepspace/testing'
 import fs from 'node:fs'
 import path from 'node:path'
 import { LOCATIONS } from './locations'
+import { THEME_LABEL } from '../src/schemas/tours-schema'
 
 const selected = process.env.WANDER_LOCATIONS
 const wanted =
@@ -76,7 +77,8 @@ test.describe('location tours', () => {
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
       await page.getByTestId(`length-${loc.minutes}`).click()
       await page.getByTestId('theme-select').click()
-      await page.getByRole('option', { name: loc.theme.charAt(0).toUpperCase() + loc.theme.slice(1) }).click()
+      await page.getByRole('option', { name: THEME_LABEL[loc.theme], exact: true }).click()
+      if (loc.includeFood && loc.theme !== 'food') await page.getByTestId('include-food').click()
       const t0 = Date.now()
       await page.getByTestId('build-tour').click()
 
@@ -110,13 +112,15 @@ test.describe('location tours', () => {
 
       const panel = {
         routeLength: await page.getByTestId('route-length').textContent({ timeout: 1000 }).catch(() => null),
-        longWalk: await page.getByTestId('long-walk').textContent({ timeout: 1000 }).catch(() => null),
+        spreadOut: await page.getByTestId('spread-out').textContent({ timeout: 1000 }).catch(() => null),
+        dishesShown: await page.getByTestId('dish-item').count(),
+        foodStopMissing: await page.getByTestId('food-stop-missing').textContent({ timeout: 1000 }).catch(() => null),
         startDistance: await page.getByTestId('start-distance').textContent({ timeout: 1000 }).catch(() => null),
         error: await page.locator('.text-destructive').allTextContents(),
       }
       fs.mkdirSync(outDir, { recursive: true })
       fs.writeFileSync(
-        path.join(outDir, `${loc.name.toLowerCase().replace(/\s+/g, '-')}.json`),
+        path.join(outDir, `${loc.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`),
         JSON.stringify(
           {
             location: loc,

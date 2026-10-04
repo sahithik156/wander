@@ -10,11 +10,13 @@
  */
 
 export const MINUTES_PER_STOP = 3
+/** Food stops take longer: you sit down and eat (SPEC.md "Food theme"). */
+export const FOOD_MINUTES_PER_STOP = 10
 export const WALK_KMH = 4.5
 export const STREET_FACTOR = 1.3
 
 /** Straight-line meters a one-way tour of `minutes` with `stops` stops can cover. */
-export function budgetMeters(minutes: number, stops: number): number {
-  const walkingMinutes = Math.max(0, minutes - stops * MINUTES_PER_STOP)
+export function budgetMeters(minutes: number, stops: number, minutesPerStop = MINUTES_PER_STOP): number {
+  const walkingMinutes = Math.max(0, minutes - stops * minutesPerStop)
   return ((walkingMinutes / 60) * WALK_KMH * 1000) / STREET_FACTOR
 }

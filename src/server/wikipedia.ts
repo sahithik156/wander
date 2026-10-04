@@ -15,7 +15,7 @@ const WIKIPEDIA_TIMEOUT_MS = 15_000
 const API = 'https://en.wikipedia.org/w/api.php'
 
 /** Wikipedia asks API clients to identify themselves. */
-const USER_AGENT = 'Wander/0.1 (https://wander.app.space; walking-tour app)'
+const USER_AGENT = 'Wander/0.1 (https://wander.app.space; tour-planning app)'
 
 export const RADIUS_METERS: Record<number, number> = { 30: 800, 60: 1500, 90: 2200 }
 export const GEOSEARCH_LIMIT = 150
@@ -96,6 +96,8 @@ export const isOrganizationTitle = (title: string) =>
  * complex). Places with no type are kept; this only removes tagged noise.
  */
 const DROP_TYPES = new Set(['event', 'waterbody', 'river', 'country', 'adm1st', 'adm2nd', 'adm3rd'])
+/** Lakes and rivers are what the Nature & parks theme is about, so it keeps them. */
+const NATURE_KEEPS = new Set(['waterbody', 'river'])
 
 const isStation = (title: string) => /\brailway station\b|\bstation$/i.test(title)
 const isSchool = (title: string) => /\bschool\b/i.test(title)
@@ -109,7 +111,7 @@ const isSchool = (title: string) => /\bschool\b/i.test(title)
  * "Trafalgar Square" or "Statue of Charles James Napier, Trafalgar Square"
  * is worse than keeping a district; the AI selection step removes districts.
  */
-export function filterPlaces(places: Place[]): Place[] {
+export function filterPlaces(places: Place[], options: { keepWater?: boolean } = {}): Place[] {
   let stationKept = false
   let schoolKept = false
   const out: Place[] = []
@@ -117,7 +119,7 @@ export function filterPlaces(places: Place[]): Place[] {
     const lower = place.title.toLowerCase()
     if (DROP_SUBSTRINGS.some((s) => lower.includes(s))) continue
     if (isOrganizationTitle(place.title)) continue
-    if (place.type && DROP_TYPES.has(place.type)) continue
+    if (place.type && DROP_TYPES.has(place.type) && !(options.keepWater && NATURE_KEEPS.has(place.type))) continue
     if (isStation(place.title)) {
       if (stationKept) continue
       stationKept = true
@@ -225,5 +227,74 @@ export function wikiCandidate(place: Place, extract: string): Candidate {
     text: extract,
     pageid: place.pageid,
     link: pageUrl(place.pageid),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cuisine article (Food theme)
+// ---------------------------------------------------------------------------
+
+interface SearchResponse {
+  query?: { search?: Array<{ title: string }> }
+  error?: { code?: string; info?: string }
+}
+
+/** Titles of the top full-text search results. */
+export async function searchTitles(query: string, signal?: AbortSignal): Promise<string[]> {
+  const params = new URLSearchParams({
+    action: 'query',
+    list: 'search',
+    srsearch: query,
+    srlimit: '5',
+    srprop: '',
+    format: 'json',
+    formatversion: '2',
+  })
+  const res = await fetch(`${API}?${params}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    signal: timeoutSignal(WIKIPEDIA_TIMEOUT_MS, signal),
+  })
+  if (!res.ok) throw new Error(`Wikipedia search failed: HTTP ${res.status}`)
+  const body = (await res.json()) as SearchResponse
+  if (body.error) throw new Error(`Wikipedia search error: ${body.error.info ?? body.error.code}`)
+  return (body.query?.search ?? []).map((s) => s.title)
+}
+
+interface ArticleResponse {
+  query?: { pages?: Array<{ title?: string; extract?: string; fullurl?: string; missing?: boolean }> }
+  error?: { code?: string; info?: string }
+}
+
+export interface Article {
+  title: string
+  url: string
+  /** Full plain text, capped at `maxChars`. */
+  text: string
+}
+
+/** The whole article as plain text (not just the intro), for the dish picker. */
+export async function fetchArticle(title: string, maxChars: number, signal?: AbortSignal): Promise<Article | undefined> {
+  const params = new URLSearchParams({
+    action: 'query',
+    prop: 'extracts|info',
+    inprop: 'url',
+    explaintext: '1',
+    titles: title,
+    format: 'json',
+    formatversion: '2',
+  })
+  const res = await fetch(`${API}?${params}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    signal: timeoutSignal(WIKIPEDIA_TIMEOUT_MS, signal),
+  })
+  if (!res.ok) throw new Error(`Wikipedia article failed: HTTP ${res.status}`)
+  const body = (await res.json()) as ArticleResponse
+  if (body.error) throw new Error(`Wikipedia article error: ${body.error.info ?? body.error.code}`)
+  const page = body.query?.pages?.[0]
+  if (!page || page.missing || !page.extract?.trim()) return undefined
+  return {
+    title: page.title ?? title,
+    url: page.fullurl ?? `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`,
+    text: page.extract.slice(0, maxChars),
   }
 }

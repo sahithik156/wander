@@ -49,13 +49,14 @@ export function trimToBudget<T extends LatLng>(
   ranked: T[],
   minutes: number,
   minStops: number,
+  minutesPerStop?: number,
 ): TrimResult<T> {
   let kept = [...ranked]
   const dropped: T[] = []
   let ordered = orderNearestNeighbor(pin, kept)
   // The walk from the pin to the first stop doesn't count against the budget.
   let meters = pathLengthMeters(ordered)
-  while (meters > budgetMeters(minutes, kept.length) && kept.length > minStops) {
+  while (meters > budgetMeters(minutes, kept.length, minutesPerStop) && kept.length > minStops) {
     let bestIndex = -1
     let bestMeters = Infinity
     kept.forEach((_, i) => {
@@ -71,6 +72,6 @@ export function trimToBudget<T extends LatLng>(
     ordered = orderNearestNeighbor(pin, kept)
     meters = pathLengthMeters(ordered)
   }
-  const budget = budgetMeters(minutes, kept.length)
+  const budget = budgetMeters(minutes, kept.length, minutesPerStop)
   return { stops: ordered, dropped, meters, budget, fits: meters <= budget }
 }

@@ -46,6 +46,13 @@ describe('filterPlaces', () => {
     expect(titles(filterPlaces(input))).toEqual(['Fasil Ghebbi', 'Gondar Castle gate', 'Lesser Angereb', 'Roman Temple of Évora'])
   })
 
+  it('keeps lakes and rivers when asked (Nature & parks theme)', () => {
+    const typed = (title: string, pageid: number, type: string): Place => ({ ...place(title, pageid), type })
+    const input = [typed('Bee Branch Creek', 1, 'river'), typed('Hussain Sagar', 2, 'waterbody'), typed('Tartu offensive', 3, 'event')]
+    expect(titles(filterPlaces(input, { keepWater: true }))).toEqual(['Bee Branch Creek', 'Hussain Sagar'])
+    expect(titles(filterPlaces(input))).toEqual([])
+  })
+
   it('drops battles and sieges by title prefix only', () => {
     const input = [
       place('Battle of Gondar', 1),

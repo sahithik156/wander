@@ -10,10 +10,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AuthOverlay, useAuthProfileReady, useJobs, useMutations, useQuery } from 'deepspace'
-import { ExternalLink, MapPin as PinIcon } from 'lucide-react'
+import { ExternalLink, MapPin as PinIcon, Star } from 'lucide-react'
 import {
   Badge,
   Button,
+  Checkbox,
+  Label,
   Select,
   SelectContent,
   SelectItem,
@@ -25,8 +27,10 @@ import {
 import { TourMap, type MapPin, type MapStop } from '@/components/map/TourMap'
 import { SCOPE_ID } from '../../constants'
 import {
+  THEME_LABEL,
   TOUR_MINUTES,
   TOUR_THEMES,
+  normalizeTheme,
   type TourCreateData,
   type TourData,
   type TourStatus,
@@ -34,7 +38,7 @@ import {
 } from '../../schemas/tours-schema'
 import type { StopData } from '../../schemas/stops-schema'
 import { distanceMeters, pathLengthMeters, walkingDistance } from '@/lib/geo'
-import { budgetMeters } from '@/lib/route-budget'
+import { FOOD_MINUTES_PER_STOP, budgetMeters } from '@/lib/route-budget'
 
 const STATUS_LABEL: Record<TourStatus, string> = {
   queued: 'Queued',
@@ -66,8 +70,6 @@ const STALE_BUILD_MS = 5 * 60 * 1000
 /** Mention the walk to the first stop only when it's more than this. */
 const START_NOTE_METERS = 300
 
-const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-
 interface PanelStop extends MapStop {
   narration?: string
   transition?: string
@@ -75,6 +77,11 @@ interface PanelStop extends MapStop {
   /** Rows from before slice 3 have no source; they are Wikipedia stops. */
   source: 'wikipedia' | 'maps'
   category?: string
+  /** 'food' for a place to eat; shown with rating instead of "Limited info". */
+  role: 'sight' | 'food'
+  rating?: number
+  reviews?: number
+  price?: string
 }
 
 export default function HomePage() {
@@ -84,6 +91,8 @@ export default function HomePage() {
   const [pin, setPin] = useState<MapPin | null>(null)
   const [minutes, setMinutes] = useState<number>(60)
   const [theme, setTheme] = useState<TourTheme>('history')
+  // "Include a food stop" (off by default; the Food theme doesn't offer it).
+  const [includeFood, setIncludeFood] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   // undefined = show my latest tour; null = a new pin was dropped, show none.
@@ -116,6 +125,10 @@ export default function HomePage() {
           sourceUrl: r.data.sourceUrl,
           source: r.data.source ?? 'wikipedia',
           category: r.data.category,
+          role: r.data.role ?? 'sight',
+          rating: r.data.rating,
+          reviews: r.data.reviews,
+          price: r.data.price,
         }))
         .sort((a, b) => a.order - b.order),
     [stopRecords],
@@ -142,9 +155,15 @@ export default function HomePage() {
   const routeKm = pathLengthMeters(stops) / 1000
   const startMeters = activeTour && stops.length > 0 ? distanceMeters(activeTour.data, stops[0]) : 0
   // The job trims stops to fit the time budget but never below 3, so a tour
-  // can still be longer than its length allows; say so instead of hiding it.
-  const longWalk =
-    activeTour !== undefined && stops.length > 0 && routeKm * 1000 > budgetMeters(activeTour.data.minutes, stops.length)
+  // can still be longer than its length allows. It is kept, with a note that
+  // it suits a car or auto better (SPEC.md "Spread-out tours").
+  const isFoodTour = activeTour !== undefined && normalizeTheme(activeTour.data.theme) === 'food'
+  const spreadOut =
+    activeTour !== undefined &&
+    stops.length > 0 &&
+    routeKm * 1000 >
+      budgetMeters(activeTour.data.minutes, stops.length, isFoodTour ? FOOD_MINUTES_PER_STOP : undefined)
+  const dishes = activeTour?.data.dishes ?? []
 
   const pickPin = (next: MapPin) => {
     setPin(next)
@@ -156,11 +175,12 @@ export default function HomePage() {
     setSubmitting(true)
     try {
       const tourId = await createConfirmed({
-        title: `${titleCase(theme)} walk · ${minutes} min`,
+        title: `${THEME_LABEL[theme]} tour · ${minutes} min`,
         lat: shownPin.lat,
         lng: shownPin.lng,
         theme,
         minutes,
+        includeFood: theme !== 'food' && includeFood,
       })
       setActiveTourId(tourId)
       await enqueue('build-tour', { tourId }, { maxAttempts: 1 })
@@ -179,7 +199,7 @@ export default function HomePage() {
         className="absolute left-4 top-4 z-10 max-h-[calc(100%-2rem)] w-[min(24rem,calc(100%-2rem))] overflow-y-auto rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg"
         data-testid="tour-builder"
       >
-        <h1 className="text-base font-semibold">Plan a walking tour</h1>
+        <h1 className="text-base font-semibold">Plan a tour</h1>
 
         {!isSignedIn ? (
           <>
@@ -231,12 +251,27 @@ export default function HomePage() {
                 <SelectContent>
                   {TOUR_THEMES.map((t) => (
                     <SelectItem key={t} value={t}>
-                      {titleCase(t)}
+                      {THEME_LABEL[t]}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {theme !== 'food' && (
+              <div className="mt-3 flex items-center gap-2">
+                <Checkbox
+                  id="include-food"
+                  checked={includeFood}
+                  onCheckedChange={setIncludeFood}
+                  disabled={building}
+                  data-testid="include-food"
+                />
+                <Label htmlFor="include-food" className="text-sm font-normal">
+                  Include a food stop
+                </Label>
+              </div>
+            )}
 
             <Button
               className="mt-4 w-full"
@@ -272,7 +307,7 @@ export default function HomePage() {
                 {stops.length > 0 && (
                   <p className="text-xs text-muted-foreground" data-testid="stop-count">
                     {stops.length} {stops.length === 1 ? 'stop' : 'stops'} ·{' '}
-                    <span data-testid="route-length">≈ {routeKm.toFixed(1)} km walk</span> (straight-line, one way)
+                    <span data-testid="route-length">≈ {routeKm.toFixed(1)} km route</span>
                   </p>
                 )}
                 {startMeters > START_NOTE_METERS && (
@@ -280,9 +315,14 @@ export default function HomePage() {
                     Starts {walkingDistance(startMeters)} from your pin at {stops[0].name}
                   </p>
                 )}
-                {longWalk && (
-                  <p className="text-xs text-warning" data-testid="long-walk">
-                    Longer walk: stops are spread out, so this may take more than {activeTour?.data.minutes} minutes.
+                {activeTour?.data.foodStopMissing && (
+                  <p className="text-xs text-muted-foreground" data-testid="food-stop-missing">
+                    No well-rated place to eat found near the end of this tour.
+                  </p>
+                )}
+                {spreadOut && (
+                  <p className="text-xs text-warning" data-testid="spread-out">
+                    Spread out: {routeKm.toFixed(1)} km, best by car or auto
                   </p>
                 )}
                 {stops.length > 0 && (
@@ -295,12 +335,27 @@ export default function HomePage() {
                           </span>
                           <div className="min-w-0 pt-0.5">
                             <span className="font-medium">{stop.name}</span>
-                            {stop.source === 'maps' && (
+                            {stop.source === 'maps' && stop.role !== 'food' && (
                               <Badge variant="secondary" className="ml-2 align-middle" data-testid="stop-limited-info">
                                 Limited info
                               </Badge>
                             )}
-                            {stop.category && <div className="text-xs text-muted-foreground">{stop.category}</div>}
+                            {stop.role === 'food' ? (
+                              <div className="flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground" data-testid="stop-food-info">
+                                {stop.rating !== undefined && (
+                                  <span className="inline-flex items-center gap-0.5">
+                                    <Star className="size-3 fill-current" aria-hidden />
+                                    {stop.rating.toFixed(1)}
+                                    {stop.reviews !== undefined && ` (${stop.reviews.toLocaleString()})`}
+                                  </span>
+                                )}
+                                {[stop.category, stop.price].filter(Boolean).map((part) => (
+                                  <span key={part}>· {part}</span>
+                                ))}
+                              </div>
+                            ) : (
+                              stop.category && <div className="text-xs text-muted-foreground">{stop.category}</div>
+                            )}
                           </div>
                         </div>
                         <div className="mt-1.5 space-y-1.5 pl-8">
@@ -331,6 +386,31 @@ export default function HomePage() {
                       </li>
                     ))}
                   </ol>
+                )}
+                {dishes.length > 0 && activeTour?.data.cuisineUrl && (
+                  // Separate from the stops on purpose: the Maps data never says
+                  // which place serves which dish (SPEC.md "Food theme").
+                  <section className="mt-3 border-t border-border pt-3" data-testid="local-dishes">
+                    <h2 className="text-sm font-semibold">Local dishes to try</h2>
+                    <ul className="mt-2 space-y-2">
+                      {dishes.map((dish) => (
+                        <li key={dish.name} className="text-sm" data-testid="dish-item">
+                          <a
+                            href={activeTour.data.cuisineUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {dish.name}
+                          </a>
+                          {dish.note && <span className="text-muted-foreground">: {dish.note}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      From Wikipedia: {activeTour.data.cuisineTitle}. Not tied to the places above.
+                    </p>
+                  </section>
                 )}
               </div>
             )}

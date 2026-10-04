@@ -5,12 +5,16 @@
  * `note` records why a location is in the set, not an expected result.
  */
 
+import type { TourTheme } from '../src/schemas/tours-schema'
+
 export interface TestLocation {
   name: string
   lat: number
   lng: number
   minutes: 30 | 60 | 90
-  theme: 'history' | 'architecture' | 'art' | 'surprise me'
+  theme: TourTheme
+  /** "Include a food stop" (ignored by the Food theme). */
+  includeFood?: boolean
   note: string
 }
 
@@ -44,4 +48,16 @@ export const LOCATIONS: TestLocation[] = [
   history60('Mardin', 37.3122, 40.7351, 'Turkish historic town'),
   history60('Ballarat', -37.5622, 143.8503, 'Australian regional city'),
   history60('Ocean', 0.0, -30.0, 'Mid-Atlantic; nothing should be found'),
+
+  // Themes and food (SPEC.md "Themes", "Food theme", "Include a food stop").
+  { ...history60('Charminar Food', 17.3616, 78.4747, 'Food theme; dishes from Hyderabadi cuisine'), theme: 'food' },
+  { ...history60('Warangal Food', 17.9689, 79.5941, 'Food theme; dishes from Telangana cuisine'), theme: 'food' },
+  { ...history60('London Food', 51.5074, -0.1278, 'Food theme; dishes from British cuisine'), theme: 'food' },
+  { ...history60('London History + food stop', 51.5074, -0.1278, 'History with one place to eat added at the end'), includeFood: true },
+  {
+    ...history60('Warangal Highlights + food stop', 17.9779, 79.5986, 'Browser case: no food stop within 600 m; needs the wider search'),
+    theme: 'highlights',
+    includeFood: true,
+  },
+  { ...history60('Kanaka Durga Temples', 16.515, 80.606, 'Temples & sacred places theme'), theme: 'temples' },
 ]

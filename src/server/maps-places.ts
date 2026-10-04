@@ -8,7 +8,6 @@
  */
 
 import { distanceMeters, type LatLng } from '../lib/geo'
-import type { TourTheme } from '../schemas/tours-schema'
 import type { Candidate } from './candidate'
 import { isOrganizationTitle } from './wikipedia'
 
@@ -23,16 +22,9 @@ export interface MapsPlace {
   rating?: number
   reviews?: number
   description?: string
+  /** Price band, e.g. "₹1–200" (mostly places to eat). */
+  price?: string
 }
-
-const THEME_QUERY: Record<TourTheme, string> = {
-  history: 'historical landmarks, temples, monuments',
-  architecture: 'historic buildings and architecture',
-  art: 'art galleries, museums, public art',
-  'surprise me': 'tourist attractions and landmarks',
-}
-
-export const themeQuery = (theme: TourTheme): string => THEME_QUERY[theme] ?? THEME_QUERY['surprise me']
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
@@ -64,6 +56,7 @@ export function parseMapsResults(data: unknown): MapsPlace[] {
       rating: num(r.rating),
       reviews: num(r.reviews),
       description: str(r.description),
+      price: str(r.price),
     })
   }
   return out
@@ -127,6 +120,7 @@ export function mapsCandidate(p: MapsPlace, pin: LatLng): Candidate {
     address: p.address,
     rating: p.rating,
     reviews: p.reviews,
+    price: p.price,
     externalId: p.placeId,
     link: mapsLink(p),
   }

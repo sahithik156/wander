@@ -29,6 +29,12 @@ export interface StopData {
   externalId?: string
   /** Maps stops only: Google's place type, e.g. "Hindu temple". */
   category?: string
+  /** 'food' for a place to eat (Food theme stops, or the added food stop). */
+  role?: 'sight' | 'food'
+  /** Maps stops only: Google rating, review count, and price band. */
+  rating?: number
+  reviews?: number
+  price?: string
   name: string
   lat: number
   lng: number
@@ -50,6 +56,10 @@ export const stopsSchema: CollectionSchema = {
     { name: 'source', storage: 'text', interpretation: { kind: 'select', options: ['wikipedia', 'maps'] }, default: 'wikipedia' },
     { name: 'externalId', storage: 'text', interpretation: 'plain' },
     { name: 'category', storage: 'text', interpretation: 'plain' },
+    { name: 'role', storage: 'text', interpretation: { kind: 'select', options: ['sight', 'food'] }, default: 'sight' },
+    { name: 'rating', storage: 'number', interpretation: 'plain' },
+    { name: 'reviews', storage: 'number', interpretation: 'plain' },
+    { name: 'price', storage: 'text', interpretation: 'plain' },
     { name: 'name', storage: 'text', interpretation: 'plain' },
     { name: 'lat', storage: 'number', interpretation: 'plain' },
     { name: 'lng', storage: 'number', interpretation: 'plain' },

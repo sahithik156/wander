@@ -28,4 +28,8 @@ export interface Candidate {
   externalId?: string
   /** Wikipedia article or Google Maps page. */
   link: string
+  /** Maps only: price band, e.g. "₹1–200". */
+  price?: string
+  /** 'food' for a place to eat (Food theme stops, or the added food stop). */
+  role?: 'food'
 }
