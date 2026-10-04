@@ -32,33 +32,40 @@ function stopsArray(obj: unknown): unknown[] {
   return obj.stops
 }
 
-const asPageid = (v: unknown): number | null => {
-  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v
-  return typeof n === 'number' && Number.isInteger(n) ? n : null
+/**
+ * Candidate id from a reply item: its "id" ("w:123" / "m:ChIJ..."), or a bare
+ * numeric pageid, read as the Wikipedia id "w:<n>".
+ */
+const asId = (item: Record<string, unknown>): string | null => {
+  const v = item.id ?? item.pageid
+  if (typeof v === 'number') return Number.isInteger(v) ? `w:${v}` : null
+  if (typeof v !== 'string' || !v.trim()) return null
+  const s = v.trim()
+  return /^\d+$/.test(s) ? `w:${s}` : s
 }
 
 export const MAX_SELECTED = 8
 
 export interface Selected {
-  pageid: number
+  id: string
   reason: string
 }
 
 /**
- * Keeps only stops whose pageid is in the candidate list and drops duplicate
- * pageids, in the model's order. Not capped: the job drops near-duplicate
+ * Keeps only stops whose id is in the candidate list and drops duplicate ids,
+ * in the model's order. Not capped: the job drops near-duplicate
  * places first, then caps at MAX_SELECTED. Too few survivors is NOT an error
  * here: the job turns that into too_few_places.
  */
-export function validateSelection(obj: unknown, candidateIds: ReadonlySet<number>): Selected[] {
-  const seen = new Set<number>()
+export function validateSelection(obj: unknown, candidateIds: ReadonlySet<string>): Selected[] {
+  const seen = new Set<string>()
   const out: Selected[] = []
   for (const item of stopsArray(obj)) {
     if (!isRecord(item)) continue
-    const pageid = asPageid(item.pageid)
-    if (pageid === null || !candidateIds.has(pageid) || seen.has(pageid)) continue
-    seen.add(pageid)
-    out.push({ pageid, reason: typeof item.reason === 'string' ? item.reason : '' })
+    const id = asId(item)
+    if (id === null || !candidateIds.has(id) || seen.has(id)) continue
+    seen.add(id)
+    out.push({ id, reason: typeof item.reason === 'string' ? item.reason : '' })
   }
   return out
 }
@@ -79,26 +86,24 @@ export function stripEmDashes(text: string): string {
 
 export interface Narration {
   title: string
-  byPageid: Map<number, { narration: string; transition: string }>
+  /** Narration text by stop id. */
+  byId: Map<string, string>
 }
 
-/** Requires a non-empty narration for every stop; extra pageids are ignored. */
-export function validateNarration(obj: unknown, stopIds: readonly number[]): Narration {
+/** Requires a non-empty narration for every stop; extra ids are ignored. */
+export function validateNarration(obj: unknown, stopIds: readonly string[]): Narration {
   const wanted = new Set(stopIds)
-  const byPageid: Narration['byPageid'] = new Map()
+  const byId: Narration['byId'] = new Map()
   for (const item of stopsArray(obj)) {
     if (!isRecord(item)) continue
-    const pageid = asPageid(item.pageid)
-    if (pageid === null || !wanted.has(pageid) || byPageid.has(pageid)) continue
+    const id = asId(item)
+    if (id === null || !wanted.has(id) || byId.has(id)) continue
     const narration = typeof item.narration === 'string' ? stripEmDashes(item.narration) : ''
     if (!narration) continue
-    byPageid.set(pageid, {
-      narration,
-      transition: typeof item.transition === 'string' ? stripEmDashes(item.transition) : '',
-    })
+    byId.set(id, narration)
   }
-  const missing = stopIds.filter((id) => !byPageid.has(id))
+  const missing = stopIds.filter((id) => !byId.has(id))
   if (missing.length > 0) throw new AiJsonError(`narration missing for ${missing.length} of ${stopIds.length} stops`)
   const title = isRecord(obj) && typeof obj.title === 'string' ? stripEmDashes(obj.title) : ''
-  return { title, byPageid }
+  return { title, byId }
 }

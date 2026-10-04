@@ -9,6 +9,11 @@
  * Permissions can't reference the parent tour, so `isPublic` is denormalized
  * onto each stop. The sharing slice must update it when a tour's isPublic
  * changes; nothing sets it yet.
+ *
+ * A stop comes from Wikipedia (source 'wikipedia', has pageid) or, where
+ * Wikipedia is thin, Google Maps (source 'maps', has externalId = place_id and
+ * category). `sourceUrl` is the article or the Google Maps page. Rows written
+ * before these columns existed have no `source`; read that as 'wikipedia'.
  */
 
 import type { CollectionSchema } from 'deepspace/schema'
@@ -17,7 +22,13 @@ export interface StopData {
   ownerId: string
   tourId: string
   order: number
-  pageid: number
+  /** Wikipedia stops only. */
+  pageid?: number
+  source?: 'wikipedia' | 'maps'
+  /** Maps stops only: Google place_id. */
+  externalId?: string
+  /** Maps stops only: Google's place type, e.g. "Hindu temple". */
+  category?: string
   name: string
   lat: number
   lng: number
@@ -36,6 +47,9 @@ export const stopsSchema: CollectionSchema = {
     { name: 'tourId', storage: 'text', interpretation: 'plain', immutable: true, required: true },
     { name: 'order', storage: 'number', interpretation: 'plain' },
     { name: 'pageid', storage: 'number', interpretation: 'plain' },
+    { name: 'source', storage: 'text', interpretation: { kind: 'select', options: ['wikipedia', 'maps'] }, default: 'wikipedia' },
+    { name: 'externalId', storage: 'text', interpretation: 'plain' },
+    { name: 'category', storage: 'text', interpretation: 'plain' },
     { name: 'name', storage: 'text', interpretation: 'plain' },
     { name: 'lat', storage: 'number', interpretation: 'plain' },
     { name: 'lng', storage: 'number', interpretation: 'plain' },

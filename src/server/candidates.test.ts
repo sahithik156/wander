@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_CANDIDATES, dropNearDuplicates, mergePlaces, ringPoints, sampleByBands, shouldSearchRing } from './candidates'
+import { MAX_CANDIDATES, widenRadii, dropSameSite, mergePlaces, ringPoints, sampleByBands, shouldSearchRing } from './candidates'
 import { destinationPoint, distanceMeters } from '../lib/geo'
 import type { Place } from './wikipedia'
 
 const pin = { lat: 51.5074, lng: -0.1278 }
+const ll = (p: { lat: number; lng: number }): [number, number] => [p.lat, p.lng]
 const R = 1500
 
 /** A place `dist` meters north of the pin. */
@@ -30,6 +31,13 @@ describe('shouldSearchRing', () => {
   })
 })
 
+describe('widenRadii', () => {
+  it('tries the base radius, then 1.5x, then 2x', () => {
+    expect(widenRadii(1500)).toEqual([1500, 2250, 3000])
+    expect(widenRadii(800)).toEqual([800, 1200, 1600])
+  })
+})
+
 describe('ringPoints', () => {
   it('returns 6 points at 2/3 of the radius', () => {
     const pts = ringPoints(pin, R)
@@ -52,20 +60,42 @@ describe('mergePlaces', () => {
   })
 })
 
-describe('dropNearDuplicates', () => {
-  it('drops a stop within 50 m of an earlier one, keeping the higher-ranked', () => {
-    const abbey = { id: 'abbey', ...destinationPoint(pin, 0, 500) }
-    const chapter = { id: 'chapter house', ...destinationPoint(abbey, 90, 30) }
-    const square = { id: 'square', ...destinationPoint(pin, 0, 100) }
-    expect(dropNearDuplicates([abbey, square, chapter]).map((p) => p.id)).toEqual(['abbey', 'square'])
-    expect(dropNearDuplicates([chapter, abbey, square]).map((p) => p.id)).toEqual(['chapter house', 'square'])
+describe('dropSameSite', () => {
+  const w = (id: string, lat: number, lng: number) => ({ id, source: 'wikipedia' as const, lat, lng })
+  const m = (id: string, lat: number, lng: number) => ({ id, source: 'maps' as const, lat, lng })
+  const ids = (xs: { id: string }[]) => xs.map((x) => x.id)
+
+  it('Warangal Fort: drops the Maps gateway 65 m from the fort; Kush Mahal (180-244 m away) stays', () => {
+    // Real coordinates from the coverage run, in the model's ranking order.
+    const baavi = m('Anthastula Baavi', 17.9689177, 79.599715)
+    const kush = m('Kush Mahal', 17.956231, 79.6130842)
+    const gate = m('Kaakatiya Kalaa Thoranam 1', 17.9563742, 79.6147811)
+    const fort = m('Warangal Fort', 17.9562932, 79.6153916)
+    expect(ids(dropSameSite([baavi, kush, gate, fort]))).toEqual(['Anthastula Baavi', 'Kush Mahal', 'Kaakatiya Kalaa Thoranam 1'])
   })
 
-  it('keeps stops 50 m or more apart, and handles empty input', () => {
-    const a = { id: 'a', ...pin }
-    const b = { id: 'b', ...destinationPoint(pin, 0, 51) }
-    expect(dropNearDuplicates([a, b]).map((p) => p.id)).toEqual(['a', 'b'])
-    expect(dropNearDuplicates([])).toEqual([])
+  it('Fasil Ghebbi: drops the Maps chapel 62 m away and keeps the Wikipedia stop, whatever the ranking', () => {
+    const battle = w('Battle of Gondar', 12.6, 37.4666667)
+    const fasil = w('Fasil Ghebbi', 12.6075, 37.47)
+    const chapel = m("Emperor's Chapel", 12.6079065, 37.4703876)
+    expect(ids(dropSameSite([battle, fasil, chapel]))).toEqual(['Battle of Gondar', 'Fasil Ghebbi'])
+    expect(ids(dropSameSite([chapel, battle, fasil]))).toEqual(['Battle of Gondar', 'Fasil Ghebbi'])
+  })
+
+  it('keeps the 50 m rule for Wikipedia-only pairs', () => {
+    const abbey = w('abbey', ...ll(destinationPoint(pin, 0, 500)))
+    const chapter = w('chapter house', ...ll(destinationPoint(abbey, 90, 30)))
+    const nearby = w('nearby church', ...ll(destinationPoint(abbey, 90, 120)))
+    // 30 m: same spot, later-ranked goes. 120 m between Wikipedia stops: both stay.
+    expect(ids(dropSameSite([abbey, chapter, nearby]))).toEqual(['abbey', 'nearby church'])
+    expect(ids(dropSameSite([chapter, abbey]))).toEqual(['chapter house'])
+  })
+
+  it('keeps Maps stops 150 m or more from everything, and handles empty input', () => {
+    const a = m('a', pin.lat, pin.lng)
+    const b = m('b', ...ll(destinationPoint(pin, 0, 151)))
+    expect(ids(dropSameSite([a, b]))).toEqual(['a', 'b'])
+    expect(dropSameSite([])).toEqual([])
   })
 })
 

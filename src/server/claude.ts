@@ -7,6 +7,10 @@
 
 import type { CronContext } from 'deepspace/worker'
 import { AiJsonError, extractJson } from './ai-json'
+import { withDeadline } from './deadline'
+
+/** Per-call limit; a narration call normally takes 5-12 s. */
+const CLAUDE_TIMEOUT_MS = 60_000
 
 export const CLAUDE_MODEL = 'claude-haiku-4-5'
 
@@ -42,13 +46,17 @@ function replyText(data: unknown): string {
 export async function callClaude(integrations: CronContext['integrations'], req: ClaudeRequest): Promise<string> {
   let data: unknown
   try {
-    data = await integrations.call('anthropic/chat-completion', {
-      model: CLAUDE_MODEL,
-      system: req.system,
-      messages: [{ role: 'user', content: req.user }],
-      temperature: req.temperature,
-      max_tokens: req.maxTokens,
-    })
+    data = await withDeadline(
+      integrations.call('anthropic/chat-completion', {
+        model: CLAUDE_MODEL,
+        system: req.system,
+        messages: [{ role: 'user', content: req.user }],
+        temperature: req.temperature,
+        max_tokens: req.maxTokens,
+      }),
+      CLAUDE_TIMEOUT_MS,
+      'AI call',
+    )
   } catch (err) {
     throw new AiError(`AI request failed: ${err instanceof Error ? err.message : String(err)}`)
   }

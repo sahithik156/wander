@@ -8,7 +8,7 @@
  * writes (stops first, narration later), with no polling.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AuthOverlay, useAuthProfileReady, useJobs, useMutations, useQuery } from 'deepspace'
 import { ExternalLink, MapPin as PinIcon } from 'lucide-react'
 import {
@@ -33,7 +33,8 @@ import {
   type TourTheme,
 } from '../../schemas/tours-schema'
 import type { StopData } from '../../schemas/stops-schema'
-import { routeLengthMeters } from '@/lib/geo'
+import { distanceMeters, pathLengthMeters, walkingDistance } from '@/lib/geo'
+import { budgetMeters } from '@/lib/route-budget'
 
 const STATUS_LABEL: Record<TourStatus, string> = {
   queued: 'Queued',
@@ -56,6 +57,14 @@ const STATUS_VARIANT: Record<TourStatus, 'secondary' | 'info' | 'success' | 'des
 }
 
 const BUILDING: TourStatus[] = ['queued', 'finding', 'choosing', 'writing']
+/**
+ * The job updates the tour at every phase, so a tour still "building" with no
+ * update for this long lost its job (e.g. the worker killed it). Treat it as
+ * stopped, or the builder would stay locked forever.
+ */
+const STALE_BUILD_MS = 5 * 60 * 1000
+/** Mention the walk to the first stop only when it's more than this. */
+const START_NOTE_METERS = 300
 
 const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -63,6 +72,9 @@ interface PanelStop extends MapStop {
   narration?: string
   transition?: string
   sourceUrl: string
+  /** Rows from before slice 3 have no source; they are Wikipedia stops. */
+  source: 'wikipedia' | 'maps'
+  category?: string
 }
 
 export default function HomePage() {
@@ -102,16 +114,37 @@ export default function HomePage() {
           narration: r.data.narration,
           transition: r.data.transition,
           sourceUrl: r.data.sourceUrl,
+          source: r.data.source ?? 'wikipedia',
+          category: r.data.category,
         }))
         .sort((a, b) => a.order - b.order),
     [stopRecords],
   )
 
+  // Re-check staleness every 30 s without polling the server.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
   const status = activeTour?.data.status
-  const building = submitting || (status !== undefined && BUILDING.includes(status))
+  const stalled =
+    status !== undefined &&
+    BUILDING.includes(status) &&
+    activeTour !== undefined &&
+    now - new Date(activeTour.updatedAt).getTime() > STALE_BUILD_MS
+  const building = submitting || (status !== undefined && BUILDING.includes(status) && !stalled)
   // Show the tour's own pin while it is the active one.
   const shownPin: MapPin | null = pin ?? (activeTour ? { lat: activeTour.data.lat, lng: activeTour.data.lng } : null)
-  const routeKm = activeTour && stops.length > 0 ? routeLengthMeters(activeTour.data, stops) / 1000 : 0
+  // The tour runs from the first stop to the last; getting to the first stop
+  // from the pin is shown separately and not counted against the time budget.
+  const routeKm = pathLengthMeters(stops) / 1000
+  const startMeters = activeTour && stops.length > 0 ? distanceMeters(activeTour.data, stops[0]) : 0
+  // The job trims stops to fit the time budget but never below 3, so a tour
+  // can still be longer than its length allows; say so instead of hiding it.
+  const longWalk =
+    activeTour !== undefined && stops.length > 0 && routeKm * 1000 > budgetMeters(activeTour.data.minutes, stops.length)
 
   const pickPin = (next: MapPin) => {
     setPin(next)
@@ -226,6 +259,11 @@ export default function HomePage() {
                 {status === 'failed' && activeTour?.data.errorMessage && (
                   <p className="text-xs text-destructive">{activeTour.data.errorMessage}</p>
                 )}
+                {stalled && (
+                  <p className="text-xs text-destructive" data-testid="tour-stalled">
+                    This tour stopped before finishing. Build it again or move the pin.
+                  </p>
+                )}
                 {status === 'too_few_places' && (
                   <p className="text-xs text-muted-foreground">
                     Not enough places near this pin. Move the pin and try again.
@@ -237,6 +275,16 @@ export default function HomePage() {
                     <span data-testid="route-length">≈ {routeKm.toFixed(1)} km walk</span> (straight-line, one way)
                   </p>
                 )}
+                {startMeters > START_NOTE_METERS && (
+                  <p className="text-xs text-muted-foreground" data-testid="start-distance">
+                    Starts {walkingDistance(startMeters)} from your pin at {stops[0].name}
+                  </p>
+                )}
+                {longWalk && (
+                  <p className="text-xs text-warning" data-testid="long-walk">
+                    Longer walk: stops are spread out, so this may take more than {activeTour?.data.minutes} minutes.
+                  </p>
+                )}
                 {stops.length > 0 && (
                   <ol className="mt-3 space-y-4 border-t border-border pt-3" data-testid="stop-list">
                     {stops.map((stop) => (
@@ -245,7 +293,15 @@ export default function HomePage() {
                           <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                             {stop.order + 1}
                           </span>
-                          <span className="pt-0.5 font-medium">{stop.name}</span>
+                          <div className="min-w-0 pt-0.5">
+                            <span className="font-medium">{stop.name}</span>
+                            {stop.source === 'maps' && (
+                              <Badge variant="secondary" className="ml-2 align-middle" data-testid="stop-limited-info">
+                                Limited info
+                              </Badge>
+                            )}
+                            {stop.category && <div className="text-xs text-muted-foreground">{stop.category}</div>}
+                          </div>
                         </div>
                         <div className="mt-1.5 space-y-1.5 pl-8">
                           {stop.narration ? (
@@ -268,7 +324,8 @@ export default function HomePage() {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                           >
-                            Source <ExternalLink className="size-3" />
+                            {stop.source === 'maps' ? 'View on Google Maps' : 'Source'}{' '}
+                            <ExternalLink className="size-3" />
                           </a>
                         </div>
                       </li>

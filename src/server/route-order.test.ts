@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { orderNearestNeighbor } from './route-order'
+import { orderNearestNeighbor, trimToBudget } from './route-order'
 import { destinationPoint } from '../lib/geo'
 
 const pin = { lat: 51.5074, lng: -0.1278 }
@@ -37,5 +37,42 @@ describe('orderNearestNeighbor', () => {
     const second = { ...first, id: 'second' }
     expect(ids(orderNearestNeighbor(pin, [first, second]))).toEqual(['first', 'second'])
     expect(ids(orderNearestNeighbor(pin, [second, first]))).toEqual(['second', 'first'])
+  })
+})
+
+describe('trimToBudget', () => {
+  it('keeps every stop when the route already fits', () => {
+    const stops = [0, 72, 144, 216, 288].map((b, i) => stop(`s${i}`, b, 200))
+    const out = trimToBudget(pin, stops, 60, 4)
+    expect(out.dropped).toEqual([])
+    expect(out.stops).toHaveLength(5)
+    expect(out.fits).toBe(true)
+  })
+
+  it('drops the far-flung stop that costs the most distance', () => {
+    const near = [100, 200, 300, 400].map((m, i) => stop(`near${i}`, 0, m))
+    const far = stop('far', 90, 3000)
+    const out = trimToBudget(pin, [near[0], far, near[1], near[2], near[3]], 60, 4)
+    expect(ids(out.dropped)).toEqual(['far'])
+    expect(ids(out.stops)).toEqual(['near0', 'near1', 'near2', 'near3'])
+    expect(out.fits).toBe(true)
+    expect(out.meters).toBeLessThanOrEqual(out.budget)
+  })
+
+  it('never goes below the minimum, and reports when the route still does not fit', () => {
+    const spread = [0, 90, 180, 270].map((b, i) => stop(`s${i}`, b, 1500))
+    const extra = stop('extra', 45, 1500)
+    const out = trimToBudget(pin, [...spread, extra], 60, 4)
+    expect(out.stops).toHaveLength(4)
+    expect(out.dropped).toHaveLength(1)
+    expect(out.fits).toBe(false)
+    expect(out.meters).toBeGreaterThan(out.budget)
+  })
+
+  it('can trim down to a minimum of 3 stops', () => {
+    const spread = [0, 90, 180, 270, 45].map((b, i) => stop(`s${i}`, b, 1500))
+    const out = trimToBudget(pin, spread, 60, 3)
+    expect(out.stops).toHaveLength(3)
+    expect(out.dropped).toHaveLength(2)
   })
 })

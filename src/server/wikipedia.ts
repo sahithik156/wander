@@ -6,6 +6,11 @@
 
 import { mergePlaces, ringPoints, shouldSearchRing } from './candidates'
 import type { LatLng } from '../lib/geo'
+import type { Candidate } from './candidate'
+import { timeoutSignal } from './deadline'
+
+/** Per-request limit for Wikipedia calls. */
+const WIKIPEDIA_TIMEOUT_MS = 15_000
 
 const API = 'https://en.wikipedia.org/w/api.php'
 
@@ -22,10 +27,17 @@ export interface Place {
   lng: number
   /** Meters from the search point. Results arrive nearest first. */
   dist: number
+  /**
+   * Wikipedia's coordinate type (gsprop=type), e.g. "landmark", "event",
+   * "adm2nd". About half of places have one; many real places don't.
+   */
+  type?: string
 }
 
 interface GeosearchResponse {
-  query?: { geosearch?: Array<{ pageid: number; title: string; lat: number; lon: number; dist: number }> }
+  query?: {
+    geosearch?: Array<{ pageid: number; title: string; lat: number; lon: number; dist: number; type?: string }>
+  }
   error?: { code?: string; info?: string }
 }
 
@@ -41,12 +53,13 @@ export async function geosearch(
     gscoord: `${lat}|${lng}`,
     gsradius: String(radiusMeters),
     gslimit: String(GEOSEARCH_LIMIT),
+    gsprop: 'type',
     format: 'json',
     formatversion: '2',
   })
   const res = await fetch(`${API}?${params}`, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-    signal,
+    signal: timeoutSignal(WIKIPEDIA_TIMEOUT_MS, signal),
   })
   if (!res.ok) throw new Error(`Wikipedia geosearch failed: HTTP ${res.status}`)
   const body = (await res.json()) as GeosearchResponse
@@ -57,6 +70,7 @@ export async function geosearch(
     lat: g.lat,
     lng: g.lon,
     dist: g.dist,
+    ...(g.type ? { type: g.type } : {}),
   }))
 }
 
@@ -71,11 +85,24 @@ export function pageUrl(pageid: number): string {
 /** Titles containing any of these (case-insensitive) are dropped. */
 const DROP_SUBSTRINGS = ['constituency', '(uk parliament', ' road', 'built-up area']
 
+/** Organizations and events, by title prefix only (case-insensitive). */
+const ORGANIZATION_PREFIXES = ['diocese of', 'archdiocese of', 'battle of', 'siege of']
+export const isOrganizationTitle = (title: string) =>
+  ORGANIZATION_PREFIXES.some((p) => title.trim().toLowerCase().startsWith(p))
+
+/**
+ * Coordinate types that are never walkable stops. "city" is deliberately NOT
+ * here: Wikipedia tags some landmarks as city (Fasil Ghebbi, Gondar's castle
+ * complex). Places with no type are kept; this only removes tagged noise.
+ */
+const DROP_TYPES = new Set(['event', 'waterbody', 'river', 'country', 'adm1st', 'adm2nd', 'adm3rd'])
+
 const isStation = (title: string) => /\brailway station\b|\bstation$/i.test(title)
 const isSchool = (title: string) => /\bschool\b/i.test(title)
 
 /**
- * Drops noise titles, then keeps at most one railway station and one school
+ * Drops noise titles and non-walkable coordinate types, then keeps at most
+ * one railway station and one school
  * (the first of each, i.e. the nearest). Order is preserved.
  *
  * Deliberately NO town/district rule: dropping a landmark such as
@@ -89,6 +116,8 @@ export function filterPlaces(places: Place[]): Place[] {
   for (const place of places) {
     const lower = place.title.toLowerCase()
     if (DROP_SUBSTRINGS.some((s) => lower.includes(s))) continue
+    if (isOrganizationTitle(place.title)) continue
+    if (place.type && DROP_TYPES.has(place.type)) continue
     if (isStation(place.title)) {
       if (stationKept) continue
       stationKept = true
@@ -172,7 +201,7 @@ export async function fetchExtracts(pageids: number[], signal?: AbortSignal): Pr
     })
     const res = await fetch(`${API}?${params}`, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-      signal,
+      signal: timeoutSignal(WIKIPEDIA_TIMEOUT_MS, signal),
     })
     if (!res.ok) throw new Error(`Wikipedia extracts failed: HTTP ${res.status}`)
     const body = (await res.json()) as ExtractsResponse
@@ -183,4 +212,18 @@ export async function fetchExtracts(pageids: number[], signal?: AbortSignal): Pr
     }
   }
   return out
+}
+
+export function wikiCandidate(place: Place, extract: string): Candidate {
+  return {
+    id: `w:${place.pageid}`,
+    source: 'wikipedia',
+    title: place.title,
+    lat: place.lat,
+    lng: place.lng,
+    dist: place.dist,
+    text: extract,
+    pageid: place.pageid,
+    link: pageUrl(place.pageid),
+  }
 }

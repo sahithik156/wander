@@ -13,6 +13,13 @@ import type { Place } from './wikipedia'
 
 export const MAX_CANDIDATES = 40
 export const RING_POINTS = 6
+/** Fewer candidates than this after the code filters counts as thin. */
+export const THIN_CANDIDATES = 8
+
+/** Radii to try when an area is thin: the base, then 1.5x, then 2x. */
+export function widenRadii(baseMeters: number): number[] {
+  return [baseMeters, Math.round(baseMeters * 1.5), baseMeters * 2]
+}
 
 /**
  * A center search that returned fewer results than the limit already holds
@@ -50,17 +57,39 @@ export function mergePlaces(lists: Place[][], pin: LatLng, radiusMeters: number)
   return [...byId.values()].sort(byDist)
 }
 
-/** Two chosen stops closer than this are treated as the same spot. */
+/** Two chosen Wikipedia stops closer than this are treated as the same spot. */
 export const NEAR_DUPLICATE_METERS = 50
+/**
+ * A chosen Maps stop this close to any other chosen stop is treated as part of
+ * the same site (e.g. a gateway inside a fort, a chapel inside a palace
+ * complex). Maps names don't show that they belong together, so the gap is
+ * wider than for Wikipedia pairs.
+ */
+export const SAME_SITE_METERS = 150
+
+interface ChosenStop extends LatLng {
+  source: 'wikipedia' | 'maps'
+}
 
 /**
- * Drops any place within `minMeters` of a place kept earlier in the list, so
- * the model's higher-ranked choice wins (for example two parts of one abbey).
+ * Drops near-duplicate chosen stops, given in the model's ranking order:
+ * - two Wikipedia stops within NEAR_DUPLICATE_METERS: the later-ranked goes;
+ * - a Maps stop within SAME_SITE_METERS of any other chosen stop: the Maps
+ *   stop goes; a Wikipedia stop always wins over Maps, even ranked lower;
+ *   between two Maps stops the earlier-ranked one stays.
  */
-export function dropNearDuplicates<T extends LatLng>(ranked: T[], minMeters = NEAR_DUPLICATE_METERS): T[] {
-  const kept: T[] = []
-  for (const place of ranked) {
-    if (kept.every((k) => distanceMeters(k, place) >= minMeters)) kept.push(place)
+export function dropSameSite<T extends ChosenStop>(ranked: T[]): T[] {
+  let kept: T[] = []
+  for (const stop of ranked) {
+    const gap = (k: T) =>
+      stop.source === 'maps' || k.source === 'maps' ? SAME_SITE_METERS : NEAR_DUPLICATE_METERS
+    const clashes = kept.filter((k) => distanceMeters(k, stop) < gap(k))
+    if (clashes.length === 0) {
+      kept.push(stop)
+    } else if (stop.source === 'wikipedia' && clashes.every((k) => k.source === 'maps')) {
+      kept = kept.filter((k) => !clashes.includes(k))
+      kept.push(stop)
+    }
   }
   return kept
 }

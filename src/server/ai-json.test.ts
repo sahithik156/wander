@@ -23,28 +23,34 @@ describe('extractJson', () => {
 })
 
 describe('validateSelection', () => {
-  const ids = new Set([10, 20, 30, 40, 50, 60, 70, 80, 90])
+  const ids = new Set(['w:10', 'w:20', 'w:30', 'm:ChIJa', 'm:ChIJb', 'w:60', 'w:70', 'w:80', 'w:90'])
 
-  it('drops pageids not in the candidate list and duplicates', () => {
+  it('drops ids not in the candidate list and duplicates', () => {
     const obj = {
       stops: [
-        { pageid: 10, reason: 'a' },
-        { pageid: 999, reason: 'invented' },
-        { pageid: 10, reason: 'dup' },
-        { pageid: '20', reason: 'string id' },
-        { pageid: 1.5 },
+        { id: 'w:10', reason: 'a' },
+        { id: 'w:999', reason: 'invented' },
+        { id: 'w:10', reason: 'dup' },
+        { id: 'm:ChIJa', reason: 'maps place' },
+        { id: 'm:ChIJzzz', reason: 'invented maps id' },
+        { id: 1.5 },
         'junk',
       ],
     }
     expect(validateSelection(obj, ids)).toEqual([
-      { pageid: 10, reason: 'a' },
-      { pageid: 20, reason: 'string id' },
+      { id: 'w:10', reason: 'a' },
+      { id: 'm:ChIJa', reason: 'maps place' },
     ])
   })
 
+  it('reads a bare numeric pageid as a Wikipedia id', () => {
+    const obj = { stops: [{ pageid: 20 }, { id: '30' }, { pageid: 'w:60' }] }
+    expect(validateSelection(obj, ids).map((s) => s.id)).toEqual(['w:20', 'w:30', 'w:60'])
+  })
+
   it('keeps every valid stop in the model order (the job caps later)', () => {
-    const obj = { stops: [...ids].reverse().map((pageid) => ({ pageid })) }
-    expect(validateSelection(obj, ids).map((s) => s.pageid)).toEqual([...ids].reverse())
+    const obj = { stops: [...ids].reverse().map((id) => ({ id })) }
+    expect(validateSelection(obj, ids).map((s) => s.id)).toEqual([...ids].reverse())
   })
 
   it('throws on the wrong shape', () => {
@@ -69,24 +75,24 @@ describe('stripEmDashes', () => {
 })
 
 describe('validateNarration', () => {
-  it('returns narration per stop and the title', () => {
+  it('returns narration per stop id and the title', () => {
     const obj = {
       title: ' Old Westminster ',
       stops: [
-        { pageid: 1, narration: 'One—two.', transition: 'Walk north.' },
-        { pageid: 2, narration: 'Two.' },
-        { pageid: 3, narration: 'Not a stop.' },
+        { id: 'w:1', narration: 'One—two.', transition: 'ignored' },
+        { id: 'm:ChIJa', narration: 'A temple.' },
+        { id: 'w:3', narration: 'Not a stop.' },
       ],
     }
-    const out = validateNarration(obj, [1, 2])
+    const out = validateNarration(obj, ['w:1', 'm:ChIJa'])
     expect(out.title).toBe('Old Westminster')
-    expect(out.byPageid.get(1)).toEqual({ narration: 'One, two.', transition: 'Walk north.' })
-    expect(out.byPageid.get(2)).toEqual({ narration: 'Two.', transition: '' })
-    expect(out.byPageid.has(3)).toBe(false)
+    expect(out.byId.get('w:1')).toBe('One, two.')
+    expect(out.byId.get('m:ChIJa')).toBe('A temple.')
+    expect(out.byId.has('w:3')).toBe(false)
   })
 
   it('throws when a stop has no narration', () => {
-    const obj = { title: 't', stops: [{ pageid: 1, narration: 'One.' }, { pageid: 2, narration: '  ' }] }
-    expect(() => validateNarration(obj, [1, 2])).toThrow(/missing for 1 of 2/)
+    const obj = { title: 't', stops: [{ id: 'w:1', narration: 'One.' }, { id: 'w:2', narration: '  ' }] }
+    expect(() => validateNarration(obj, ['w:1', 'w:2'])).toThrow(/missing for 1 of 2/)
   })
 })

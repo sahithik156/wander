@@ -32,13 +32,37 @@ export function destinationPoint(origin: LatLng, bearingDeg: number, meters: num
 }
 
 /**
- * Straight-line length of the one-way route pin -> stops in order (it ends at
- * the last stop; no walk back). Real walking is longer (streets aren't
- * straight), so the UI labels it "≈".
+ * Straight-line length of the tour from the first stop to the last, in order.
+ * The walk from the pin to the first stop is not part of the tour (the panel
+ * shows it separately). Real walking is longer (streets aren't straight), so
+ * the UI labels it "≈".
  */
-export function routeLengthMeters(pin: LatLng, stops: LatLng[]): number {
-  const points = [pin, ...stops]
+export function pathLengthMeters(stops: LatLng[]): number {
   let total = 0
-  for (let i = 1; i < points.length; i++) total += distanceMeters(points[i - 1], points[i])
+  for (let i = 1; i < stops.length; i++) total += distanceMeters(stops[i - 1], stops[i])
   return total
+}
+
+/** Rounded for walking: nearest 10 m under 100 m, nearest 50 m under 1 km, else 0.1 km. */
+export function walkingDistance(meters: number): string {
+  if (meters < 100) return `${Math.max(10, Math.round(meters / 10) * 10)} meters`
+  if (meters < 1000) return `${Math.round(meters / 50) * 50} meters`
+  return `${(Math.round(meters / 100) / 10).toFixed(1).replace(/\.0$/, '')} km`
+}
+
+/** Initial compass bearing from a to b in degrees (0 = north, 90 = east). */
+export function bearingDegrees(a: LatLng, b: LatLng): number {
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const y = Math.sin(dLng) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  return (toDeg(Math.atan2(y, x)) + 360) % 360
+}
+
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest']
+
+/** Eight-point compass direction from a to b, e.g. "southwest". */
+export function compassDirection(a: LatLng, b: LatLng): string {
+  return COMPASS[Math.round(bearingDegrees(a, b) / 45) % 8]
 }
