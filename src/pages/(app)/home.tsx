@@ -1,5 +1,10 @@
+/* home pattern: product-preview-first — the map and the tour planner beside it, styled as a printed city guide */
 /**
- * Home — full-screen map and tour builder.
+ * Home — map and tour builder.
+ *
+ * Layout (presentation): desktop has a full-height left sidebar with "Plan"
+ * and "Tour" tabs beside the map; on a phone the sidebar is a bottom sheet
+ * over the map (src/components/tour/BottomSheet.tsx).
  *
  * Drop a pin, pick a length and theme, "Build tour". That creates a `tours`
  * row and enqueues the build-tour job (src/jobs.ts), which writes `stops`
@@ -10,21 +15,23 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AuthOverlay, useAuthProfileReady, useJobs, useMutations, useQuery } from 'deepspace'
-import { ExternalLink, MapPin as PinIcon, Star } from 'lucide-react'
 import {
   Badge,
   Button,
   Checkbox,
   Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   cn,
   useToast,
 } from '@/components/ui'
-import { TourMap, type MapPin, type MapStop } from '@/components/map/TourMap'
+import { BottomSheet } from '@/components/tour/BottomSheet'
+import { LocalDishes } from '@/components/tour/LocalDishes'
+import { StopTimeline } from '@/components/tour/StopTimeline'
+import { ThemeChips } from '@/components/tour/ThemeChips'
+import { TourMap, type MapPin, type MapStop, type RouteState } from '@/components/map/TourMap'
 import { SCOPE_ID } from '../../constants'
 import {
   THEME_LABEL,
@@ -48,16 +55,6 @@ const STATUS_LABEL: Record<TourStatus, string> = {
   done: 'Done',
   failed: 'Failed',
   too_few_places: 'Too few places',
-}
-
-const STATUS_VARIANT: Record<TourStatus, 'secondary' | 'info' | 'success' | 'destructive' | 'warning'> = {
-  queued: 'secondary',
-  finding: 'info',
-  choosing: 'info',
-  writing: 'info',
-  done: 'success',
-  failed: 'destructive',
-  too_few_places: 'warning',
 }
 
 const BUILDING: TourStatus[] = ['queued', 'finding', 'choosing', 'writing']
@@ -191,231 +188,236 @@ export default function HomePage() {
     }
   }
 
-  return (
-    <div className="relative h-full w-full overflow-hidden">
-      <TourMap pin={shownPin} stops={stops} locked={!isSignedIn || building} onPick={pickPin} />
+  // --- Presentation-only state: which tab is open, and the phone sheet height.
+  const [tab, setTab] = useState<'plan' | 'tour'>('plan')
+  const [sheetExpanded, setSheetExpanded] = useState(false)
 
-      <div
-        className="absolute left-4 top-4 z-10 max-h-[calc(100%-2rem)] w-[min(24rem,calc(100%-2rem))] overflow-y-auto rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg"
+  // Dropping a pin goes back to planning; starting a build shows the tour.
+  const handlePick = (next: MapPin) => {
+    pickPin(next)
+    setTab('plan')
+  }
+  const handleBuild = () => {
+    setTab('tour')
+    void buildTour()
+  }
+
+  const tourPin = activeTour ? { lat: activeTour.data.lat, lng: activeTour.data.lng } : null
+  // Dateline above the title. Stops carry no city or address, so the place is
+  // the pin's coordinates.
+  const dateline = activeTour
+    ? [
+        `${activeTour.data.lat.toFixed(4)}, ${activeTour.data.lng.toFixed(4)}`,
+        `${activeTour.data.minutes} min`,
+        THEME_LABEL[normalizeTheme(activeTour.data.theme)],
+      ].join(' · ')
+    : ''
+  const routeState: RouteState = building ? 'building' : status === 'done' ? 'done' : 'idle'
+
+  return (
+    <div className="relative flex h-full w-full overflow-hidden bg-background">
+      <BottomSheet
+        label="Tour panel"
+        expanded={sheetExpanded}
+        onExpandedChange={setSheetExpanded}
         data-testid="tour-builder"
       >
-        <h1 className="text-base font-semibold">Plan a tour</h1>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as 'plan' | 'tour')}
+          className="flex min-h-0 flex-1 flex-col gap-0"
+        >
+          <div className="shrink-0 border-b border-rule px-6 pb-2 pt-1 md:pt-4">
+            <TabsList>
+              <TabsTrigger value="plan">Plan</TabsTrigger>
+              <TabsTrigger value="tour">Tour</TabsTrigger>
+            </TabsList>
+          </div>
 
-        {!isSignedIn ? (
-          <>
-            <p className="mt-2 text-sm text-muted-foreground">Sign in to drop a pin and build a tour.</p>
-            <Button className="mt-3 w-full" onClick={() => setShowAuth(true)} data-testid="home-sign-in">
-              Sign in
-            </Button>
-          </>
-        ) : (
-          <>
-            <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-              <PinIcon className="size-4 shrink-0" />
-              {shownPin
-                ? `${shownPin.lat.toFixed(4)}, ${shownPin.lng.toFixed(4)}`
-                : 'Click the map to drop a pin'}
-            </p>
+          {/* ---- Plan ---------------------------------------------------- */}
+          <TabsContent value="plan" className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-6">
+              <h1 className="font-display text-[34px] leading-[1.05] text-foreground md:text-[40px]">Plan a tour</h1>
 
-            <div className="mt-4">
-              <div className="mb-1.5 text-xs font-medium text-muted-foreground">Length</div>
-              <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Tour length">
-                {TOUR_MINUTES.map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="radio"
-                    aria-checked={minutes === m}
-                    disabled={building}
-                    onClick={() => setMinutes(m)}
-                    data-testid={`length-${m}`}
-                    className={cn(
-                      'h-9 rounded-md border text-sm transition-colors disabled:opacity-50',
-                      minutes === m
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-input bg-background hover:bg-accent',
-                    )}
-                  >
-                    {m} min
-                  </button>
-                ))}
-              </div>
+              {!isSignedIn ? (
+                <>
+                  <p className="mt-3 text-base leading-relaxed text-muted-foreground">
+                    Sign in to drop a pin and build a tour.
+                  </p>
+                  <Button className="mt-5 w-full" onClick={() => setShowAuth(true)} data-testid="home-sign-in">
+                    Sign in
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 text-[15px] text-muted-foreground tabular-nums">
+                    {shownPin
+                      ? `Pin at ${shownPin.lat.toFixed(4)}, ${shownPin.lng.toFixed(4)}`
+                      : 'Click the map to drop a pin'}
+                  </p>
+
+                  <fieldset className="mt-8">
+                    <legend className="mb-2 text-[15px] text-foreground">Length</legend>
+                    {/* Segmented control: square edges, 1px ink, selected filled ink. */}
+                    <div
+                      className="grid grid-cols-3 overflow-hidden rounded-sm border border-ink"
+                      role="radiogroup"
+                      aria-label="Tour length"
+                    >
+                      {TOUR_MINUTES.map((m, i) => (
+                        <button
+                          key={m}
+                          type="button"
+                          role="radio"
+                          aria-checked={minutes === m}
+                          disabled={building}
+                          onClick={() => setMinutes(m)}
+                          data-testid={`length-${m}`}
+                          className={cn(
+                            'h-11 cursor-pointer text-[15px] tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                            i > 0 && 'border-l border-ink',
+                            minutes === m ? 'bg-ink text-background' : 'bg-transparent text-foreground hover:bg-accent',
+                          )}
+                        >
+                          {m} min
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="mt-7">
+                    <legend className="mb-2 text-[15px] text-foreground">Theme</legend>
+                    <ThemeChips
+                      themes={TOUR_THEMES}
+                      labels={THEME_LABEL}
+                      value={theme}
+                      onChange={setTheme}
+                      disabled={building}
+                    />
+                  </fieldset>
+
+                  {theme !== 'food' && (
+                    <div className="mt-7 flex items-center gap-3">
+                      <Checkbox
+                        id="include-food"
+                        checked={includeFood}
+                        onCheckedChange={setIncludeFood}
+                        disabled={building}
+                        data-testid="include-food"
+                      />
+                      <Label htmlFor="include-food" className="cursor-pointer text-base font-normal">
+                        Include a food stop
+                      </Label>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
-            <div className="mt-4">
-              <div className="mb-1.5 text-xs font-medium text-muted-foreground">Theme</div>
-              <Select value={theme} onValueChange={(v) => setTheme(v as TourTheme)} disabled={building}>
-                <SelectTrigger data-testid="theme-select" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TOUR_THEMES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {THEME_LABEL[t]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {theme !== 'food' && (
-              <div className="mt-3 flex items-center gap-2">
-                <Checkbox
-                  id="include-food"
-                  checked={includeFood}
-                  onCheckedChange={setIncludeFood}
-                  disabled={building}
-                  data-testid="include-food"
-                />
-                <Label htmlFor="include-food" className="text-sm font-normal">
-                  Include a food stop
-                </Label>
+            {isSignedIn && (
+              // Kept outside the scroll area so it shows in the phone sheet's peek.
+              <div className="shrink-0 border-t border-rule px-6 py-4">
+                <Button
+                  className="h-12 w-full"
+                  onClick={handleBuild}
+                  disabled={!shownPin || !ready || building}
+                  loading={building}
+                  data-testid="build-tour"
+                >
+                  Build tour
+                </Button>
               </div>
             )}
+          </TabsContent>
 
-            <Button
-              className="mt-4 w-full"
-              onClick={buildTour}
-              disabled={!shownPin || !ready || building}
-              loading={building}
-              data-testid="build-tour"
-            >
-              Build tour
-            </Button>
-
-            {status && (
-              <div className="mt-4 space-y-1.5" data-testid="tour-status-panel">
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <span className="truncate font-medium">{activeTour?.data.title}</span>
-                  <Badge variant={STATUS_VARIANT[status]} data-testid="tour-status" data-status={status}>
+          {/* ---- Tour ---------------------------------------------------- */}
+          <TabsContent value="tour" className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 pt-6">
+            {!status ? (
+              <div>
+                <p className="font-display text-[34px] leading-tight text-foreground">No tour yet</p>
+                <p className="mt-3 text-base leading-relaxed text-muted-foreground">
+                  Drop a pin on the map and build one from the Plan tab.
+                </p>
+                <Button variant="outline" className="mt-5" onClick={() => setTab('plan')}>
+                  Go to Plan
+                </Button>
+              </div>
+            ) : (
+              <div data-testid="tour-status-panel">
+                <div className="flex items-start justify-between gap-4">
+                  <p className="min-w-0 text-[15px] text-muted-foreground tabular-nums">{dateline}</p>
+                  <Badge
+                    variant={status === 'failed' ? 'destructive' : 'outline'}
+                    className="shrink-0"
+                    data-testid="tour-status"
+                    data-status={status}
+                  >
                     {STATUS_LABEL[status]}
                   </Badge>
                 </div>
-                {status === 'failed' && activeTour?.data.errorMessage && (
-                  <p className="text-xs text-destructive">{activeTour.data.errorMessage}</p>
-                )}
-                {stalled && (
-                  <p className="text-xs text-destructive" data-testid="tour-stalled">
-                    This tour stopped before finishing. Build it again or move the pin.
-                  </p>
-                )}
-                {status === 'too_few_places' && (
-                  <p className="text-xs text-muted-foreground">
-                    Not enough places near this pin. Move the pin and try again.
-                  </p>
-                )}
-                {stops.length > 0 && (
-                  <p className="text-xs text-muted-foreground" data-testid="stop-count">
-                    {stops.length} {stops.length === 1 ? 'stop' : 'stops'} ·{' '}
-                    <span data-testid="route-length">≈ {routeKm.toFixed(1)} km route</span>
-                  </p>
-                )}
-                {startMeters > START_NOTE_METERS && (
-                  <p className="text-xs text-muted-foreground" data-testid="start-distance">
-                    Starts {walkingDistance(startMeters)} from your pin at {stops[0].name}
-                  </p>
-                )}
-                {activeTour?.data.foodStopMissing && (
-                  <p className="text-xs text-muted-foreground" data-testid="food-stop-missing">
-                    No well-rated place to eat found near the end of this tour.
-                  </p>
-                )}
-                {spreadOut && (
-                  <p className="text-xs text-warning" data-testid="spread-out">
-                    Spread out: {routeKm.toFixed(1)} km, best by car or auto
-                  </p>
-                )}
-                {stops.length > 0 && (
-                  <ol className="mt-3 space-y-4 border-t border-border pt-3" data-testid="stop-list">
-                    {stops.map((stop) => (
-                      <li key={stop.id} className="text-sm" data-testid="stop-item">
-                        <div className="flex items-start gap-2">
-                          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                            {stop.order + 1}
-                          </span>
-                          <div className="min-w-0 pt-0.5">
-                            <span className="font-medium">{stop.name}</span>
-                            {stop.source === 'maps' && stop.role !== 'food' && (
-                              <Badge variant="secondary" className="ml-2 align-middle" data-testid="stop-limited-info">
-                                Limited info
-                              </Badge>
-                            )}
-                            {stop.role === 'food' ? (
-                              <div className="flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground" data-testid="stop-food-info">
-                                {stop.rating !== undefined && (
-                                  <span className="inline-flex items-center gap-0.5">
-                                    <Star className="size-3 fill-current" aria-hidden />
-                                    {stop.rating.toFixed(1)}
-                                    {stop.reviews !== undefined && ` (${stop.reviews.toLocaleString()})`}
-                                  </span>
-                                )}
-                                {[stop.category, stop.price].filter(Boolean).map((part) => (
-                                  <span key={part}>· {part}</span>
-                                ))}
-                              </div>
-                            ) : (
-                              stop.category && <div className="text-xs text-muted-foreground">{stop.category}</div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="mt-1.5 space-y-1.5 pl-8">
-                          {stop.narration ? (
-                            <p className="leading-relaxed" data-testid="stop-narration">
-                              {stop.narration}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">
-                              {status === 'writing' ? 'Writing…' : 'No narration.'}
-                            </p>
-                          )}
-                          {stop.transition && (
-                            <p className="text-xs italic text-muted-foreground" data-testid="stop-transition">
-                              {stop.transition}
-                            </p>
-                          )}
-                          <a
-                            href={stop.sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                          >
-                            {stop.source === 'maps' ? 'View on Google Maps' : 'Source'}{' '}
-                            <ExternalLink className="size-3" />
-                          </a>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                {dishes.length > 0 && activeTour?.data.cuisineUrl && (
-                  // Separate from the stops on purpose: the Maps data never says
-                  // which place serves which dish (SPEC.md "Food theme").
-                  <section className="mt-3 border-t border-border pt-3" data-testid="local-dishes">
-                    <h2 className="text-sm font-semibold">Local dishes to try</h2>
-                    <ul className="mt-2 space-y-2">
-                      {dishes.map((dish) => (
-                        <li key={dish.name} className="text-sm" data-testid="dish-item">
-                          <a
-                            href={activeTour.data.cuisineUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-primary hover:underline"
-                          >
-                            {dish.name}
-                          </a>
-                          {dish.note && <span className="text-muted-foreground">: {dish.note}</span>}
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      From Wikipedia: {activeTour.data.cuisineTitle}. Not tied to the places above.
+                <h2 className="mt-2 font-display text-[34px] leading-[1.05] text-foreground [overflow-wrap:anywhere] md:text-[42px]">
+                  {activeTour?.data.title}
+                </h2>
+
+                <div className="mt-4 border-t border-ink pt-3">
+                  {stops.length > 0 && (
+                    <p className="text-base text-foreground tabular-nums" data-testid="stop-count">
+                      {stops.length} {stops.length === 1 ? 'stop' : 'stops'} ·{' '}
+                      <span data-testid="route-length">≈ {routeKm.toFixed(1)} km route</span>
                     </p>
-                  </section>
+                  )}
+                  {/* Summary notes: plain text, not badges. */}
+                  <div className="mt-1 space-y-1 text-[15px] leading-snug text-muted-foreground tabular-nums empty:hidden">
+                    {status === 'failed' && activeTour?.data.errorMessage && (
+                      <p className="text-destructive">{activeTour.data.errorMessage}</p>
+                    )}
+                    {stalled && (
+                      <p className="text-destructive" data-testid="tour-stalled">
+                        This tour stopped before finishing. Build it again or move the pin.
+                      </p>
+                    )}
+                    {status === 'too_few_places' && <p>Not enough places near this pin. Move the pin and try again.</p>}
+                    {startMeters > START_NOTE_METERS && (
+                      <p data-testid="start-distance">
+                        Starts {walkingDistance(startMeters)} from your pin at {stops[0].name}
+                      </p>
+                    )}
+                    {activeTour?.data.foodStopMissing && (
+                      <p data-testid="food-stop-missing">No well-rated place to eat found near the end of this tour.</p>
+                    )}
+                    {spreadOut && (
+                      <p data-testid="spread-out">Spread out: {routeKm.toFixed(1)} km, best by car or auto</p>
+                    )}
+                  </div>
+                </div>
+
+                {stops.length > 0 && tourPin && (
+                  <div className="mt-8">
+                    <StopTimeline stops={stops} pin={tourPin} writing={status === 'writing'} />
+                  </div>
+                )}
+
+                {dishes.length > 0 && activeTour?.data.cuisineUrl && (
+                  <LocalDishes
+                    dishes={dishes}
+                    cuisineTitle={activeTour.data.cuisineTitle}
+                    cuisineUrl={activeTour.data.cuisineUrl}
+                  />
                 )}
               </div>
             )}
-          </>
-        )}
+          </TabsContent>
+        </Tabs>
+      </BottomSheet>
+
+      <div className="relative min-w-0 flex-1">
+        <TourMap
+          pin={shownPin}
+          stops={stops}
+          locked={!isSignedIn || building}
+          routeState={routeState}
+          onPick={handlePick}
+        />
       </div>
 
       {showAuth && <AuthOverlay onClose={() => setShowAuth(false)} />}

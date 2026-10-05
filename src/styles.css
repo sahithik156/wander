@@ -1,4 +1,6 @@
 @import "tailwindcss" source(none);
+/* Wander's fonts are self-hosted @fontsource packages imported in main.tsx
+   (importing them here would break their relative font-file URLs). */
 @import "./themes.css";
 
 /* Scan local source + SDK components for Tailwind class usage */
@@ -38,6 +40,16 @@
   --color-input: rgba(60, 64, 67, 0.6);
   --color-ring: #818cf8;
   --radius: 0.5rem;
+
+  /* Wander extras (overridden per theme in themes.css): ink, hairline rule,
+     the metro line (route) and the food line, and the display face.
+     Declared here so Tailwind generates text-ink / bg-line / bg-food /
+     border-rule / font-display utilities. */
+  --color-ink: #e8eaed;
+  --color-rule: rgba(232, 234, 237, 0.15);
+  --color-line: #818cf8;
+  --color-food: #f87171;
+  --font-display: Georgia, 'Times New Roman', serif;
 
   /*
    * Map the rounded-* utilities onto --radius so a theme (or you) can change
@@ -164,7 +176,7 @@
   }
 
   body {
-    font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-sans);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -227,8 +239,34 @@
    * — never `*`.
    */
 
+  /* Keyboard focus, scoped to interactive elements only (see note above). */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  [role="option"]:focus-visible,
+  [role="radio"]:focus-visible,
+  [role="tab"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
   /* Prevent 300ms tap delay on mobile */
   a, button, [role="button"], input, select, textarea {
     touch-action: manipulation;
+  }
+}
+
+/* Respect reduced motion: no transitions, animations, or smooth scrolling. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

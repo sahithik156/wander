@@ -69,9 +69,9 @@ export default function Navigation() {
 
   return (
     <>
-      <nav data-testid="app-navigation" className="border-b border-border bg-background">
+      <nav data-testid="app-navigation" className="border-b border-ink bg-background">
         <div className="mx-auto flex h-12 max-w-7xl items-center gap-4 px-4">
-          <Link to="/home" className="text-sm font-semibold text-foreground">
+          <Link to="/home" className="font-display text-xl text-foreground">
             {APP_NAME}
           </Link>
 
@@ -82,7 +82,7 @@ export default function Navigation() {
           {!isLoaded ? null : isSignedIn && !profileReady ? (
             /* Signed in, profile still loading — skeleton pill, never the
                Sign in button (that would offer sign-in to a signed-in user). */
-            <div className="flex items-center gap-2 rounded-full border border-border bg-card/60 py-1 pl-1 pr-2.5">
+            <div className="flex items-center gap-2 rounded-sm border border-rule py-1 pl-1 pr-2.5">
               <div className="h-6 w-6 animate-pulse rounded-full bg-muted" />
               <div className="hidden h-4 w-20 animate-pulse rounded-md bg-muted sm:block" />
             </div>
@@ -92,7 +92,7 @@ export default function Navigation() {
                 render={
                   <button
                     aria-label="Account menu"
-                    className="group flex items-center gap-2 rounded-full border border-border bg-card/60 py-1 pl-1 pr-2.5 text-sm transition-colors hover:bg-card"
+                    className="group flex items-center gap-2 rounded-sm border border-rule py-1 pl-1 pr-2.5 text-sm transition-colors hover:bg-accent"
                   >
                     <Avatar className="h-6 w-6 ring-1 ring-inset ring-border">
                       <AvatarImage src={user.imageUrl ?? undefined} referrerPolicy="no-referrer" />

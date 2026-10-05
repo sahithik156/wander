@@ -44,3 +44,107 @@
   --color-shell: #fafafa;
   --color-shell-panel: #ffffff;
 }
+
+/*
+ * Wander — "printed city guide + metro map" (SPEC.md "Visual design").
+ * Light (`wander`) is always the default; dark (`wander-night`) only when the
+ * user picks it in Settings (applied before paint by index.html). It never
+ * follows the device setting.
+ *
+ * Color roles: ink for text, borders, and the primary button; cobalt
+ * (--color-line) only for the route and the metro line; tomato
+ * (--color-food) only for food fills, markers, and rules (it fails AA as
+ * small text, so food text stays in ink). Every text pair passes WCAG AA.
+ * Shape: 2px corners on everything, 1px borders, no shadows.
+ */
+[data-theme="wander"] {
+  color-scheme: light;
+  --color-background: #f4f1ea;
+  --color-foreground: #111111;
+  --color-card: #faf8f3;
+  --color-card-foreground: #111111;
+  --color-popover: #faf8f3;
+  --color-popover-foreground: #111111;
+  --color-primary: #111111;
+  --color-primary-foreground: #f4f1ea;
+  --color-secondary: #eae6dc;
+  --color-secondary-foreground: #111111;
+  --color-muted: #eae6dc;
+  --color-muted-foreground: #5f5a52;
+  --color-accent: rgba(17, 17, 17, 0.06);
+  --color-accent-foreground: #111111;
+  --color-destructive: #b42318;
+  --color-destructive-foreground: #ffffff;
+  /* rule: ink at 15%, for hairline dividers */
+  --color-border: rgba(17, 17, 17, 0.15);
+  --color-input: #111111;
+  --color-ring: #111111;
+  --color-success: #2f6b45;
+  --color-success-foreground: #ffffff;
+  --color-warning: #8a5a12;
+  --color-warning-foreground: #ffffff;
+  --color-info: #111111;
+  --color-info-foreground: #f4f1ea;
+  --color-shell: #f4f1ea;
+  --color-shell-panel: #faf8f3;
+  --color-ink: #111111;
+  --color-rule: rgba(17, 17, 17, 0.15);
+  --color-line: #1f4fff;
+  --color-food: #e5402a;
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --radius: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+  --font-display: 'Gloock', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Familjen Grotesk', 'Helvetica Neue', Helvetica, sans-serif;
+}
+
+/* Dark: only when picked in Settings. Same roles, cobalt and tomato brightened. */
+[data-theme="wander-night"] {
+  color-scheme: dark;
+  --color-background: #121210;
+  --color-foreground: #f4f1ea;
+  --color-card: #1b1b18;
+  --color-card-foreground: #f4f1ea;
+  --color-popover: #1b1b18;
+  --color-popover-foreground: #f4f1ea;
+  --color-primary: #f4f1ea;
+  --color-primary-foreground: #121210;
+  --color-secondary: #26251f;
+  --color-secondary-foreground: #f4f1ea;
+  --color-muted: #26251f;
+  --color-muted-foreground: #aba497;
+  --color-accent: rgba(244, 241, 234, 0.08);
+  --color-accent-foreground: #f4f1ea;
+  --color-destructive: #ff8a7a;
+  --color-destructive-foreground: #121210;
+  --color-border: rgba(244, 241, 234, 0.16);
+  --color-input: #f4f1ea;
+  --color-ring: #f4f1ea;
+  --color-success: #8cc79f;
+  --color-success-foreground: #121210;
+  --color-warning: #e2aa55;
+  --color-warning-foreground: #121210;
+  --color-info: #f4f1ea;
+  --color-info-foreground: #121210;
+  --color-shell: #121210;
+  --color-shell-panel: #1b1b18;
+  --color-ink: #f4f1ea;
+  --color-rule: rgba(244, 241, 234, 0.16);
+  --color-line: #6e8bff;
+  --color-food: #ff6b55;
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --radius: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+  --font-display: 'Gloock', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Familjen Grotesk', 'Helvetica Neue', Helvetica, sans-serif;
+}

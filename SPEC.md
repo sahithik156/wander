@@ -163,9 +163,9 @@ read as Highlights.
   entries ("Name - description") do not count, and a sentence already used
   for another dish is not reused. Spacing and unbalanced quote marks from
   Wikipedia markup are tidied. If there is no such sentence, show the dish
-  with no note. Show them in a "Local dishes to
-  try" section, each linked to the article. No article found: skip the
-  section.
+  with no note. Show them in a "From the local kitchen" section (labelled
+  "Local dishes to try"), each linked to the article, with the source line.
+  No article found: skip the section.
 - Honesty: never claim a restaurant serves a dish unless the Maps data says
   so. Dishes and places are shown separately and never linked.
 
@@ -200,9 +200,70 @@ openweathermap/geocoding integration turns a typed place name into coordinates.
 MapLibre GL with free OpenFreeMap tiles (no API key).
 
 ## Where things go
-- The map and tour builder replace src/pages/(app)/home.tsx.
-- Wander's own theme goes in src/themes.css (later slice).
-- Replace the placeholder landing page with a Wander landing page (later slice).
+- The map and tour builder: src/pages/(app)/home.tsx, with presentational
+  pieces in src/components/tour/ (BottomSheet, ThemeChips, StopTimeline,
+  LocalDishes) and the map in src/components/map/TourMap.tsx.
+- Wander's theme: src/themes.css (`wander`, `wander-night`), registered in
+  src/themes.ts; `wander` is the default in index.html, which also applies a
+  saved Dark choice. The Light/Dark switch is
+  src/components/AppearanceSetting.tsx, on the Settings page.
+- Landing page: src/pages/index.tsx (static: no auth, no realtime).
+
+## Visual design ("printed city guide + metro map")
+- Feel: the tour panel reads like a page from a printed city guide; the
+  route on the map looks like a transit line.
+- Avoid (they read as AI-generated): dark as the default, pill chips,
+  uppercase letter-spaced mono labels, terracotta/salmon/purple accents,
+  gradients, blur, soft drop shadows, emoji, a centered hero with three
+  feature cards, and the fonts Inter, Roboto, system-ui, Geist, Poppins,
+  Space Grotesk, Fraunces, Instrument Serif, Young Serif, Martian Mono.
+- Theme `wander` is always the default (light): paper #F4F1EA background,
+  ink #111111 for text, 1px borders, and the primary button; rule = ink at
+  15% for hairline dividers; muted text #5F5A52. Cobalt #1F4FFF is used
+  only for the route and the metro line; tomato #E5402A only for food
+  stops and the food section (fills, markers, rules). Tomato fails AA as
+  small text, so food text stays in ink. Selected length and theme are
+  filled ink with paper text, never cobalt.
+- Dark (`wander-night`): background #121210, text #F4F1EA, cobalt and
+  tomato brightened. Used only when the user picks Dark in Settings
+  ("Appearance"); saved in the browser and applied before first paint by
+  index.html. It never follows the device setting.
+- All text meets WCAG AA in both themes.
+- Type (two families, self-hosted @fontsource): Gloock for tour titles,
+  page headings, and dish names (tour title about 40-44px on desktop);
+  Familjen Grotesk for everything else, with tabular numerals for
+  distances, minutes, ratings, and coordinates. Labels in sentence case,
+  regular weight, no letter-spacing.
+- Shapes: 2px corners on everything, 1px ink borders, no shadows except a
+  subtle one on the mobile bottom sheet.
+- Map: OpenFreeMap "positron" (light) and "dark" (dark theme). The route
+  is a solid cobalt line; the leg into a food stop is tomato. Stops are
+  station circles (thick ink edge, number; food stations tomato). The pin
+  is a thin crosshair. When a tour finishes, the route draws in once along
+  its length (skipped with prefers-reduced-motion).
+- /home layout: desktop has a full-height left sidebar with "Plan" and
+  "Tour" tabs (simple underlined text); it switches to Tour when a build
+  starts and back to Plan when a pin is dropped. On a phone the sidebar is
+  a bottom sheet with a grab handle and two heights (peek: Build button or
+  tour title and status; expanded: everything).
+- Plan view: length as a square segmented control, themes as square
+  options, the food stop checkbox, and a solid ink "Build tour" button.
+- Tour view: a dateline above the title ("[place] · 60 min · History";
+  the place is the pin's coordinates, since stops carry no city), the
+  Gloock title, a hairline rule, the summary line, and summary notes
+  ("Spread out", "Starts X from your pin") as plain text. Stops run down a
+  cobalt metro line with station markers; each has the name, a plain meta
+  line (source, rating, distance from the pin), the narration, the source
+  link, and the "Head ..." transition beside the line. "Limited info" is a
+  small muted text label.
+- Food: "Eat like a local" as a menu card: thin tomato rule above, each
+  dish name in Gloock with a dotted leader, the note beneath, and a small
+  source line at the bottom.
+- Landing: left-aligned city-guide page with the pitch "Tours of any
+  neighborhood, built from real sources", the three steps as stations on a
+  cobalt metro line, and a "Plan a tour" ink button.
+- Accessibility: visible keyboard focus, prefers-reduced-motion respected,
+  long names wrap, placeholder lines while narration is written.
 
 ## Rules
 - All external API and AI calls happen in the worker, never the browser.

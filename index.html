@@ -4,12 +4,12 @@
   To switch themes, change `data-theme` to any id defined in src/themes.ts.
   Color values per theme live in src/themes.css.
 -->
-<html lang="en" data-theme="slate">
+<html lang="en" data-theme="wander">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.ico" />
-    <title>wander</title>
+    <title>Wander</title>
     <!--
       First-paint background, keyed to the data-theme attribute above.
       Without this the browser paints white until the CSS bundle arrives —
@@ -20,8 +20,23 @@
     <style>
       html { background-color: #0a0a0a; color-scheme: dark; }
       html[data-theme="paper"] { background-color: #ffffff; color-scheme: light; }
+      html[data-theme="wander"] { background-color: #f4f1ea; color-scheme: light; }
+      html[data-theme="wander-night"] { background-color: #121210; color-scheme: dark; }
       /* Add one line per theme you create, mirroring its --color-background. */
     </style>
+    <!--
+      Wander is light by default. Dark is used only when the user picked it in
+      Settings ("Appearance"), saved in this browser; it never follows the
+      device setting. Applied here, before first paint, so there is no flash.
+    -->
+    <script>
+      try {
+        if (localStorage.getItem('wander-appearance') === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'wander-night')
+          document.documentElement.setAttribute('data-ui-theme', 'dark')
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

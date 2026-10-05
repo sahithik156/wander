@@ -18,6 +18,16 @@
 
 export const THEMES = [
   {
+    id: 'wander',
+    label: 'Wander',
+    description: 'Printed city guide: paper, ink, cobalt metro line, tomato food line. Always the default.',
+  },
+  {
+    id: 'wander-night',
+    label: 'Wander night',
+    description: 'Dark variant. Only when the user picks Dark in Settings; never follows the device setting.',
+  },
+  {
     id: 'slate',
     label: 'Slate',
     description: 'Neutral dark placeholder default. Replace with your own theme.',
@@ -33,9 +43,9 @@ export type ThemeId = (typeof THEMES)[number]['id']
 
 /** Read the currently active theme id from <html data-theme>. */
 export function getActiveTheme(): ThemeId {
-  if (typeof document === 'undefined') return 'slate'
+  if (typeof document === 'undefined') return 'wander'
   const id = document.documentElement.getAttribute('data-theme') as ThemeId | null
-  return id ?? 'slate'
+  return id ?? 'wander'
 }
 
 /** Look up a theme entry by id, or fall back to the first theme. */

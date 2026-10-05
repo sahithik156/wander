@@ -4,6 +4,12 @@ import { createRoot, hydrateRoot } from 'react-dom/client'
 import { routes } from '@generouted/react-router/lazy'
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { installStaleChunkRecovery } from './stale-chunk-recovery'
+// Wander's fonts, self-hosted (no external font requests), latin subsets only.
+// Imported from JS so Vite resolves each package's relative font-file URLs.
+import '@fontsource/gloock/latin-400.css'
+import '@fontsource/familjen-grotesk/latin-400.css'
+import '@fontsource/familjen-grotesk/latin-500.css'
+import '@fontsource/familjen-grotesk/latin-600.css'
 import './styles.css'
 
 async function main() {

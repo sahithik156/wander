@@ -11,7 +11,7 @@ function TabsList({ className, ...props }: TabsPrimitive.List.Props) {
     <TabsPrimitive.List
       data-slot="tabs-list"
       className={cn(
-        'bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]',
+        'text-muted-foreground inline-flex w-fit items-end justify-center gap-6',
         className,
       )}
       {...props}
@@ -24,7 +24,8 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
-        "data-[active]:bg-background data-[active]:text-foreground data-[active]:shadow-sm focus-visible:ring-ring/50 text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2.5 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        // Simple underlined text: the active tab is ink and underlined.
+        "data-[active]:text-foreground data-[active]:underline text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center justify-center gap-1.5 pb-1 pt-1 text-base whitespace-nowrap underline-offset-[6px] decoration-1 transition-colors outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}
