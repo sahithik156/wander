@@ -1,5 +1,8 @@
 # Wander
 
+<img width="1918" height="962" alt="image" src="https://github.com/user-attachments/assets/403c7019-b16f-4b83-8144-13fc5bcdc4f6" />
+
+
 Wander plans short tours of any neighborhood from real sources. Drop a pin on the map, pick 30, 60, or 90 minutes and a theme, and Wander finds nearby places on Wikipedia (and on Google Maps where Wikipedia is thin), lets Claude pick the stops, orders them into a one-way route that fits your time, and writes a short note for each stop using only what its source says. Every stop links to its source. Tours are planned for walking, and the app says when the stops are better reached by car or auto.
 
 Live: https://wander.app.space
